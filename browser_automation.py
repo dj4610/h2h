@@ -1,129 +1,83 @@
 """
 File: browser_automation.py
-Deskripsi: Modul Selenium untuk Prizm Global Voting (Update Des 2025 - GDA 2026)
+Update: Des 2025 - Playwright untuk Prizm GDA Voting (Hearts2Hearts)
 """
 import time
 import os
 import requests
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
+import asyncio
+from playwright.async_api import async_playwright
 
 class PrizmVotingBot:
     def __init__(self):
-        self.driver = None
-        self.wait = None
+        self.browser = None
+        self.context = None
+        self.page = None
         self.api_key = os.getenv("2CAPTCHA_API_KEY")
-        self.target_url = "https://global.prizm.co.kr/"  # Homepage dulu, lebih stabil
-        self.voting_url = "https://global.prizm.co.kr/story/gda25"  # Masih aktif untuk GDA
+        self.voting_url = "https://global.prizm.co.kr/story/gda25"
 
-    def _setup_driver(self):
-        chrome_options = Options()
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-        chrome_options.add_argument("--start-maximized")
-        chrome_options.add_argument("--disable-infobars")
-        chrome_options.add_argument("--disable-extensions")
-        chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    async def _solve_recaptcha_v2(self, sitekey, page_url):
+        if not self.api_key:
+            return False, "No 2CAPTCHA key"
         
-        self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-        self.wait = WebDriverWait(self.driver, 30)
-
-    def solve_captcha(self):
-        try:
-            print("Mendeteksi CAPTCHA...")
-            current_url = self.driver.current_url
-
-            # ReCaptcha V2
-            if self.driver.find_elements(By.CSS_SELECTOR, "iframe[src*='recaptcha']"):
-                print("ReCaptcha V2 terdeteksi.")
-                sitekey_elem = self.driver.find_element(By.CSS_SELECTOR, "[data-sitekey]")
-                sitekey = sitekey_elem.get_attribute("data-sitekey") if sitekey_elem else None
-                if not sitekey:
-                    return False, "Sitekey tidak ditemukan"
-                # ... (sama seperti sebelumnya, kirim ke 2Captcha)
-
-            # AWS WAF (jika ada script wafParams)
-            try:
-                waf_params = self.driver.execute_script("return window.wafParams || null;")
-                if waf_params and waf_params.get('key'):
-                    print("AWS WAF terdeteksi.")
-                    # ... logic sama
-            except:
-                pass
-
-            print("Tidak ada CAPTCHA atau sudah bypass.")
-            return True, "No CAPTCHA or bypassed"
-
-        except Exception as e:
-            return False, f"CAPTCHA error: {str(e)}"
-
-    # ... (_poll_2captcha_result sama seperti asli, tapi tambah check response is not None)
-
-    def initiate_login_sequence(self, email):
-        self._setup_driver()
-        try:
-            self.driver.get(self.target_url)
-            time.sleep(3)
-
-            # Klik Login (cari tombol login global)
-            login_btn = self.wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Log in') or contains(text(), 'Login')] | //a[contains(@href, 'login')]")))
-            login_btn.click()
-
-            # Input email
-            email_field = self.wait.until(EC.presence_of_element_located((By.NAME, "email")))
-            email_field.clear()
-            email_field.send_keys(email)
-
-            # Bypass CAPTCHA jika ada
-            success, msg = self.solve_captcha()
-            if not success:
-                return f"CAPTCHA Gagal: {msg}"
-
-            # Submit
-            submit_btn = self.wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[type='submit']")))
-            submit_btn.click()
-
-            # Tunggu OTP page
-            self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='tel'], input[name*='code']")))
-            return "OTP_SENT"
-
-        except Exception as e:
-            return f"Login awal error: {str(e)}"
-
-    # submit_otp & submit_2fa_and_login (sama, tapi tambah try-except lebih ketat & wait lebih lama)
-
-    def perform_voting_hearts2hearts(self):
-        try:
-            self.driver.get(self.voting_url)
+        payload = {'key': self.api_key, 'method': 'userrecaptcha', 'googlekey': sitekey, 'pageurl': page_url, 'json': 1}
+        response = requests.post("http://2captcha.com/in.php", data=payload).json()
+        if response.get('status') != 1:
+            return False, response.get('request')
+        
+        captcha_id = response['request']
+        for _ in range(40):
             time.sleep(5)
+            res = requests.get(f"http://2captcha.com/res.php?key={self.api_key}&action=get&id={captcha_id}&json':1").json()
+            if res.get('status') == 1:
+                token = res['request']
+                await self.page.evaluate(f'''() => {{
+                    document.getElementById("g-recaptcha-response").innerHTML = "{token}";
+                    if (typeof ___grecaptcha_cfg !== 'undefined') {{
+                        ___grecaptcha_cfg.clients[0].callback("{token}");
+                    }}
+                }}''')
+                return True, "Solved"
+            if res.get('request') != 'CAPCHA_NOT_READY':
+                return False, res.get('request')
+        return False, "Timeout"
 
-            # Cari candidate Hearts2Hearts (update XPath lebih fleksibel)
-            hearts_xpath = "//div[contains(text(), 'Hearts2Hearts')]/following::button[contains(@class, 'vote') or contains(text(), 'Vote')]"
-            vote_btn = self.wait.until(EC.element_to_be_clickable((By.XPATH, hearts_xpath)))
-            self.driver.execute_script("arguments[0].scrollIntoView(true);", vote_btn)
-            vote_btn.click()
-
-            # Handle ad atau confirm
-            time.sleep(3)
+    async def initiate_login_sequence(self, email):
+        async with async_playwright() as p:
+            self.browser = await p.chromium.launch(headless=False)  # False untuk debug, nanti True
+            self.context = await self.browser.new_context(viewport={"width": 1920, "height": 1080})
+            self.page = await self.context.new_page()
+            await self.page.goto(self.voting_url, wait_until="networkidle")
+            
             try:
-                confirm = self.wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Confirm') or contains(text(), 'OK')]")), timeout=5)
-                confirm.click()
-            except:
-                pass
+                # Klik Vote Hearts2Hearts (selector robust)
+                await self.page.wait_for_selector("text=/Hearts2Hearts/i", timeout=30000)
+                vote_btn = await self.page.query_selector("//div[contains(text(), 'Hearts2Hearts')]//following::button[contains(text(), 'Vote')]")
+                await vote_btn.scroll_into_view_if_needed()
+                await vote_btn.click()
+                
+                # Tunggu modal login
+                await self.page.wait_for_selector("input[placeholder='Email']", timeout=20000)
+                await self.page.fill("input[placeholder='Email']", email)
+                
+                # Solve reCAPTCHA jika ada
+                if await self.page.query_selector("iframe[title*='reCAPTCHA']"):
+                    sitekey = await self.page.eval_on_selector("[data-sitekey]", "el => el.dataset.sitekey")
+                    success, msg = await self._solve_recaptcha_v2(sitekey, self.page.url)
+                    if not success:
+                        await self.close_browser()
+                        return f"CAPTCHA gagal: {msg}"
+                
+                # Submit
+                await self.page.click("button:has-text('Next')")
+                await self.page.wait_for_selector("input[type='tel']", timeout=20000)  # OTP field
+                
+                return "OTP_SENT"
+            
+            except Exception as e:
+                await self.close_browser()
+                return f"Error: {str(e)}"
 
-            time.sleep(5)
-            screenshot_path = f"proof_{int(time.time())}.png"
-            self.driver.save_screenshot(screenshot_path)
-
-            return {"status": True, "timestamp": time.ctime(), "screenshot": screenshot_path, "message": "Vote sukses untuk Hearts2Hearts!"}
-
-        except Exception as e:
-            return {"status": False, "message": f"Voting error: {str(e)}"}
-
-    def close_browser(self):
-        if self.driver:
-            self.driver.quit()
+    async def close_browser(self):
+        if self.browser:
+            await self.browser.close()
