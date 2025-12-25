@@ -1,15 +1,11 @@
-Persiapan Folder: Buat folder baru bernama prizm_bot. Di dalamnya, buat 4 file sesuai nama di atas (requirements.txt, .env, browser_automation.py, main.py) dan tempelkan (copy-paste) kode yang sesuai.
+1. Persiapan Folder: Buat folder baru bernama prizm_bot. Di dalamnya, buat 4 file sesuai nama di atas (requirements.txt, .env, browser_automation.py, main.py) dan tempelkan (copy-paste) kode yang sesuai.
 
-Instalasi Environment: Buka terminal/CMD di dalam folder prizm_bot, lalu jalankan:
+2. Instalasi Environment: Buka terminal/CMD di dalam folder prizm_bot, lalu jalankan: pip install -r requirements.txt
 
-Bash
-pip install -r requirements.txt
-Konfigurasi: Edit file .env, masukkan Token Bot Telegram Anda dan API Key 2Captcha Anda.
+3. Konfigurasi: Edit file .env, masukkan Token Bot Telegram Anda dan API Key 2Captcha Anda.
 
-Menjalankan Bot: Jalankan perintah:
+4. Menjalankan Bot: Jalankan perintah: python main.py
 
-Bash
-python main.py
 Penggunaan di Telegram:
 
 Buka bot Anda di Telegram.
