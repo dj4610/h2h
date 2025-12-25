@@ -1,3 +1,5 @@
+README
+
 1. Persiapan Folder: Buat folder baru bernama prizm_bot. Di dalamnya, buat 4 file sesuai nama di atas (requirements.txt, .env, browser_automation.py, main.py) dan tempelkan (copy-paste) kode yang sesuai.
 
 2. Instalasi Environment: Buka terminal/CMD di dalam folder prizm_bot, lalu jalankan: pip install -r requirements.txt
